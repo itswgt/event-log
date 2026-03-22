@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Log It</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c27;
+    --border: #2a2a3d;
+    --accent: #6c63ff;
+    --accent2: #ff6584;
+    --text: #f0f0f8;
+    --muted: #7070a0;
+    --card-bg: #16161f;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh; max-width: 480px; margin: 0 auto; overflow-x: hidden;
+  }
+
+  .blob-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.10; }
+  .blob-1 { width: 300px; height: 300px; background: var(--accent); top: -80px; right: -60px; animation: drift 12s ease-in-out infinite alternate; }
+  .blob-2 { width: 200px; height: 200px; background: var(--accent2); bottom: 100px; left: -50px; animation: drift 16s ease-in-out infinite alternate-reverse; }
+
+  @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(20px,30px) scale(1.1); } }
+
+  .app { position: relative; z-index: 1; padding: 0 0 130px; }
+
+  /* Header row */
+  header {
+    padding: 52px 24px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .header-left { display: flex; align-items: center; gap: 8px; }
+
+  .count-badge, .export-btn, .import-btn {
+    font-size: 0.65rem; font-weight: 500; letter-spacing: 0.1em;
+    color: var(--muted); background: var(--surface2); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 20px; cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    transition: color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  .export-btn:active, .import-btn:active { color: var(--text); border-color: var(--muted); }
+  #importFile { display: none; }
+
+  /* Tap button */
+  .tap-zone { margin: 8px 24px 32px; }
+  .tap-btn {
+    width: 100%; aspect-ratio: 1; max-height: 220px;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 32px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.12s cubic-bezier(.34,1.56,.64,1), border-color 0.2s, background 0.2s;
+    position: relative; overflow: hidden; user-select: none;
+  }
+  .tap-btn::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(108,99,255,0.18) 0%, transparent 70%);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .tap-btn:active { transform: scale(0.94); background: var(--surface2); }
+  .tap-btn:active::before { opacity: 1; }
+  .tap-btn.flash { animation: flash-anim 0.4s ease-out forwards; }
+
+  @keyframes flash-anim {
+    0%   { transform: scale(0.94); border-color: var(--accent2); box-shadow: 0 0 0 0 rgba(255,101,132,0.35); }
+    40%  { transform: scale(1.02); border-color: var(--accent2); box-shadow: 0 0 0 16px rgba(255,101,132,0); }
+    100% { transform: scale(1);    border-color: var(--border); box-shadow: none; }
+  }
+
+  .tap-label {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem;
+    letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase;
+  }
+
+  /* Group header */
+  .group-header {
+    font-family: 'Syne', sans-serif; font-size: 0.68rem; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
+    padding: 20px 24px 10px; display: flex; align-items: center; gap: 10px;
+  }
+  .group-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .group-header:first-child { padding-top: 0; }
+
+  /* Log list */
+  .log-list { padding: 0 24px; display: flex; flex-direction: column; gap: 8px; }
+
+  .log-item {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 16px; display: flex; align-items: flex-start; gap: 14px;
+    animation: slide-in 0.35s cubic-bezier(.34,1.56,.64,1) forwards;
+    position: relative; overflow: hidden;
+  }
+  /* No accent bar by default */
+  .log-item.has-note::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: linear-gradient(to bottom, var(--accent2), var(--accent));
+    border-radius: 3px 0 0 3px;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .log-num { font-size: 0.6rem; color: var(--muted); font-weight: 500; min-width: 24px; text-align: center; opacity: 0.5; padding-top: 2px; }
+  .log-info { flex: 1; min-width: 0; }
+  .log-date { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.82rem; color: var(--text); letter-spacing: 0.02em; }
+  .log-time { font-size: 0.72rem; color: var(--muted); margin-top: 2px; font-weight: 400; opacity: 0.7; }
+
+  .log-note-text {
+    font-size: 0.72rem; color: var(--muted); margin-top: 8px; line-height: 1.55;
+    word-break: break-word; border-top: 1px solid var(--border); padding-top: 7px;
+  }
+  .log-note-btn {
+    background: none; border: none; font-size: 0.6rem; font-family: 'DM Mono', monospace;
+    color: var(--muted); opacity: 0.35; cursor: pointer; padding: 2px 0; margin-top: 6px;
+    letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px;
+    transition: opacity 0.2s, color 0.2s;
+  }
+  .log-note-btn:active { opacity: 1; color: var(--accent2); }
+
+  .log-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding-top: 2px; }
+  .log-delete {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    padding: 4px; border-radius: 8px; font-size: 0.85rem; opacity: 0.3;
+    transition: opacity 0.2s, color 0.2s; line-height: 1;
+  }
+  .log-delete:active { opacity: 1; color: var(--accent2); }
+  .log-edit-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    padding: 4px; font-size: 0.75rem; opacity: 0.25;
+    transition: opacity 0.2s, color 0.2s; line-height: 1;
+  }
+  .log-edit-btn:active { opacity: 1; color: var(--accent2); }
+
+  /* Empty */
+  .empty { padding: 48px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .empty-icon { font-size: 2.5rem; opacity: 0.2; }
+  .empty-text { font-size: 0.8rem; color: var(--muted); letter-spacing: 0.06em; line-height: 1.6; }
+
+  /* Bottom bar */
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    background: linear-gradient(to top, var(--bg) 60%, transparent);
+    padding: 16px 24px 32px; display: flex; gap: 10px; z-index: 10;
+  }
+  .clear-btn {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'Syne', sans-serif; font-size: 0.75rem;
+    font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 14px; border-radius: 14px; cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .clear-btn:active { background: #2d1a1f; color: var(--accent2); border-color: var(--accent2); }
+
+  /* Toast */
+  .toast {
+    position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-80px);
+    background: var(--surface2); border: 1px solid var(--accent2);
+    color: var(--accent2); font-family: 'Syne', sans-serif; font-size: 0.75rem;
+    font-weight: 600; letter-spacing: 0.08em; padding: 10px 20px; border-radius: 30px;
+    z-index: 200; transition: transform 0.4s cubic-bezier(.34,1.56,.64,1);
+    white-space: nowrap; pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Note sheet */
+  .sheet-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px); z-index: 50;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  .sheet-overlay.open { opacity: 1; pointer-events: all; }
+  .sheet {
+    position: fixed; bottom: 0; left: 50%;
+    transform: translateX(-50%) translateY(100%);
+    width: 100%; max-width: 480px;
+    background: var(--surface); border-top: 1px solid var(--border);
+    border-radius: 28px 28px 0 0; padding: 16px 24px 40px;
+    z-index: 60; transition: transform 0.4s cubic-bezier(.34,1.56,.64,1);
+  }
+  .sheet.open { transform: translateX(-50%) translateY(0); }
+  .sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 0 auto 20px; }
+  .sheet-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .sheet-meta { font-size: 0.7rem; color: var(--accent2); margin-bottom: 16px; letter-spacing: 0.05em; }
+  .note-textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 14px; color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 0.85rem; line-height: 1.6; padding: 14px; resize: none;
+    min-height: 110px; outline: none; transition: border-color 0.2s; caret-color: var(--accent2);
+  }
+  .note-textarea:focus { border-color: var(--accent2); }
+  .note-textarea::placeholder { color: var(--muted); opacity: 0.4; }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .sheet-save {
+    flex: 1; background: var(--accent2); border: none; color: #fff;
+    font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; padding: 14px;
+    border-radius: 14px; cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+  }
+  .sheet-save:active { opacity: 0.8; transform: scale(0.97); }
+  .sheet-cancel {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 14px 20px;
+    border-radius: 14px; cursor: pointer; transition: opacity 0.2s;
+  }
+  .sheet-cancel:active { opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<div class="blob-wrap">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+</div>
+
+<div class="toast" id="toast">✦ Logged</div>
+
+<div class="sheet-overlay" id="overlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Add a note</div>
+  <div class="sheet-meta" id="sheetMeta"></div>
+  <textarea class="note-textarea" id="noteInput" placeholder="What happened?" maxlength="300"></textarea>
+  <div class="sheet-actions">
+    <button class="sheet-save" onclick="saveNote()">Save note</button>
+    <button class="sheet-cancel" onclick="closeSheet()">Cancel</button>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".json" onchange="importData(event)">
+
+<div class="app">
+  <header>
+    <div class="count-badge" id="countBadge">0 events</div>
+    <div style="display:flex;gap:8px;">
+      <button class="export-btn" onclick="exportData()">export</button>
+      <button class="import-btn" onclick="document.getElementById('importFile').click()">import</button>
+    </div>
+  </header>
+
+  <div class="tap-zone">
+    <button class="tap-btn" id="tapBtn" onclick="logEvent()">
+      <div class="tap-label">Tap to log</div>
+    </button>
+  </div>
+
+  <div class="log-list" id="logList"></div>
+
+  <div class="bottom-bar">
+    <button class="clear-btn" onclick="clearAll()">Clear all</button>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'logit_events';
+  let events = [];
+  let pendingNoteId = null;
+
+  function load() {
+    try { events = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { events = []; }
+    render();
+  }
+
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(events)); }
+
+  function logEvent() {
+    const now = new Date();
+    events.unshift({ id: now.getTime(), ts: now.toISOString(), note: '' });
+    save(); render(); flashBtn(); showToast();
+  }
+
+  function deleteEvent(id) {
+    events = events.filter(e => e.id !== id);
+    save(); render();
+  }
+
+  function clearAll() {
+    if (!events.length) return;
+    events = []; save(); render();
+  }
+
+  // ── Export / Import ──
+  function exportData() {
+    const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'logit-export-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  function importData(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!Array.isArray(imported)) throw new Error();
+        // Merge, deduplicate by id, sort newest first
+        const map = new Map();
+        [...events, ...imported].forEach(ev => map.set(ev.id, ev));
+        events = Array.from(map.values()).sort((a,b) => b.id - a.id);
+        save(); render();
+        showToastMsg('✦ Imported');
+      } catch { showToastMsg('⚠ Invalid file'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  // ── Note sheet ──
+  function openSheet(id) {
+    pendingNoteId = id;
+    const ev = events.find(e => e.id === id); if (!ev) return;
+    const d = new Date(ev.ts);
+    document.getElementById('sheetMeta').textContent =
+      d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      + ' · ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('noteInput').value = ev.note || '';
+    document.getElementById('overlay').classList.add('open');
+    document.getElementById('sheet').classList.add('open');
+    setTimeout(() => document.getElementById('noteInput').focus(), 360);
+  }
+
+  function closeSheet() {
+    pendingNoteId = null;
+    document.getElementById('overlay').classList.remove('open');
+    document.getElementById('sheet').classList.remove('open');
+    document.getElementById('noteInput').blur();
+  }
+
+  function saveNote() {
+    if (pendingNoteId === null) return;
+    const val = document.getElementById('noteInput').value.trim();
+    const ev = events.find(e => e.id === pendingNoteId);
+    if (ev) { ev.note = val; save(); render(); }
+    closeSheet();
+  }
+
+  // ── Grouping helpers ──
+  function groupKey(ts) {
+    const d = new Date(ts);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday - 86400000);
+    const startOfThisWeek = new Date(startOfToday - startOfToday.getDay() * 86400000);
+    const startOfLastWeek = new Date(startOfThisWeek - 7 * 86400000);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    if (d >= startOfToday) return { key: 'today', label: 'Today' };
+    if (d >= startOfYesterday) return { key: 'yesterday', label: 'Yesterday' };
+    if (d >= startOfThisWeek) return { key: 'thisweek', label: 'This week' };
+    if (d >= startOfLastWeek) return { key: 'lastweek', label: 'Last week' };
+    if (d >= startOfThisMonth) return { key: 'thismonth', label: 'This month' };
+    if (d >= startOfLastMonth) return { key: 'lastmonth', label: 'Last month' };
+    // Older: group by month
+    const monthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return { key: monthLabel, label: monthLabel };
+  }
+
+  // ── Render ──
+  function render() {
+    const list = document.getElementById('logList');
+    document.getElementById('countBadge').textContent =
+      events.length === 1 ? '1 event' : `${events.length} events`;
+
+    if (!events.length) {
+      list.innerHTML = `<div class="empty"><div class="empty-icon">◌</div><div class="empty-text">Nothing logged yet.<br>Tap the button above to start.</div></div>`;
+      return;
+    }
+
+    // Group events
+    const groups = [];
+    const groupMap = new Map();
+    events.forEach((ev, i) => {
+      const { key, label } = groupKey(ev.ts);
+      if (!groupMap.has(key)) { groupMap.set(key, groups.length); groups.push({ label, items: [] }); }
+      groups[groupMap.get(key)].items.push({ ev, globalIdx: i });
+    });
+
+    let html = '';
+    groups.forEach(group => {
+      html += `<div class="group-header">${group.label}</div>`;
+      group.items.forEach(({ ev, globalIdx }) => {
+        const d = new Date(ev.ts);
+        const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const hasNote = ev.note && ev.note.trim();
+        const num = events.length - globalIdx;
+
+        const noteSection = hasNote
+          ? `<div class="log-note-text">${escHtml(ev.note)}</div>`
+          : `<button class="log-note-btn" onclick="openSheet(${ev.id})">✎ add note</button>`;
+
+        const editBtn = hasNote
+          ? `<button class="log-edit-btn" onclick="openSheet(${ev.id})">✎</button>` : '';
+
+        html += `
+          <div class="log-item${hasNote ? ' has-note' : ''}" id="ev-${ev.id}">
+            <div class="log-num">${num}</div>
+            <div class="log-info">
+              <div class="log-date">${date}</div>
+              <div class="log-time">${time}</div>
+              ${noteSection}
+            </div>
+            <div class="log-actions">
+              <button class="log-delete" onclick="deleteEvent(${ev.id})" aria-label="Delete">✕</button>
+              ${editBtn}
+            </div>
+          </div>`;
+      });
+    });
+
+    list.innerHTML = html;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function flashBtn() {
+    const btn = document.getElementById('tapBtn');
+    btn.classList.remove('flash'); void btn.offsetWidth; btn.classList.add('flash');
+  }
+
+  let toastTimer;
+  function showToast() { showToastMsg('✦ Logged'); }
+  function showToastMsg(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+  }
+
+  load();
+</script>
+</body>
+</html>
